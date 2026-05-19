@@ -11,28 +11,44 @@ from gtts import gTTS
 from moviepy import VideoClip, AudioFileClip, CompositeAudioClip
 
 # ==========================================
-# 1. INITIALIZATION & CONFIGURATION
+# 1. IMMEDIATE RENDER HEALTH KEEPALIVE
+# ==========================================
+def serve_keep_alive():
+    target_port = int(os.getenv("PORT", 10000))
+    class HealthCheckListener(SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b"<html><body><h1>Processing Finished</h1><p>Video target compiled.</p></body></html>")
+            
+    http_service = HTTPServer(('', target_port), HealthCheckListener)
+    print(f"[RENDER KEEPALIVE] Health endpoint active on port {target_port}.")
+    http_service.serve_forever()
+
+# Start server instantly to prevent Render port-binding timeouts during rendering
+keepalive_worker = threading.Thread(target=serve_keep_alive, daemon=True)
+keepalive_worker.start()
+
+# ==========================================
+# 2. CONFIGURATION & FONTS
 # ==========================================
 HF_TOKEN = os.getenv("HF_TOKEN")
-if not HF_TOKEN:
-    print("[SYSTEM WARNING] HF_TOKEN environment variable is missing. Utilizing safe script fallback.")
 
-# Download typography font to handle standalone Linux headless environments
 FONT_PATH = "Roboto-Bold.ttf"
 if not os.path.exists(FONT_PATH):
-    print("[ASSET] Downloading premium typography font...")
+    print("[ASSET] Downloading typography font...")
     font_url = "https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Bold.ttf"
     try:
         r = requests.get(font_url, timeout=15)
         with open(FONT_PATH, "wb") as f:
             f.write(r.content)
-        print("[ASSET] Font saved locally.")
     except Exception as e:
-        print(f"[ASSET CLEAR] Font download skipped: {e}. Reverting to default canvas settings.")
+        print(f"[ASSET] Font download skipped: {e}")
         FONT_PATH = None
 
 # ==========================================
-# 2. AI SCRIPT GENERATION ENGINE
+# 3. CHAT-COMPLETION AI SCRIPT ENGINE
 # ==========================================
 print("[AI ENGINE] Requesting narrative contents from Hugging Face...")
 script_data = []
@@ -40,36 +56,40 @@ script_data = []
 if HF_TOKEN:
     try:
         client = InferenceClient(api_key=HF_TOKEN)
-        prompt = (
-            "Generate a highly viral TikTok video script about deep psychological facts or scary space facts. "
-            "Provide exactly 9 to 12 segments to ensure the voiceover duration comfortably exceeds 60 seconds. "
-            "Output your answer STRICTLY as a single JSON array of objects with no preamble text or markdown backticks outside. "
-            "Each object must contain keys 'text' (the spoken words) and 'scene' (short descriptive mood keyword)."
-        )
-        response = client.text_generation(
-            model="meta-llama/Meta-Llama-3-8B-Instruct",
-            prompt=prompt,
-            max_new_tokens=2048,
-            temperature=0.75
-        ).strip()
         
-        # Clean potential conversational formatting blocks safely without line breaking
+        # Using chat completions endpoint to fix provider compatibility issues
+        response_obj = client.chat.completions.create(
+            model="meta-llama/Meta-Llama-3-8B-Instruct",
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Generate a highly viral TikTok video script about deep psychological facts. "
+                    "Provide exactly 9 to 12 segments to ensure the duration exceeds 60 seconds. "
+                    "Output your answer STRICTLY as a raw JSON array of objects with no markdown backticks or conversational intros. "
+                    "Each object must contain keys 'text' (the spoken words) and 'scene' (short descriptive keyword)."
+                )
+            }],
+            max_tokens=2048,
+            temperature=0.75
+        )
+        
+        response = response_obj.choices[0].message.content.strip()
+        
+        # Sanitize markdown response variations
         if "```json" in response:
             match = re.search(r"```json\s*(.*?)\s*```", response, re.DOTALL)
-            if match:
-                response = match.group(1).strip()
+            if match: response = match.group(1).strip()
         elif "```" in response:
             match = re.search(r"```\s*(.*?)\s*```", response, re.DOTALL)
-            if match:
-                response = match.group(1).strip()
+            if match: response = match.group(1).strip()
 
         script_data = json.loads(response)
-        print(f"[AI ENGINE] Successfully ingested {len(script_data)} narrative visual segments.")
+        print(f"[AI ENGINE] Successfully ingested {len(script_data)} viral text blocks.")
     except Exception as e:
         print(f"[AI ENGINE] Parsing pipeline failed: {e}. Engaging manual backup block.")
         script_data = []
 
-# Fail-safe backup data guaranteeing script completeness under any network condition
+# High-retention data fallback backup
 if not script_data:
     script_data = [
         {"text": "Deep in the dark voids of the universe, time doesn't behave the way you think it does.", "scene": "nebula"},
@@ -83,7 +103,7 @@ if not script_data:
     ]
 
 # ==========================================
-# 3. VOICE SYNTHESIS & TIMING CALIBRATION
+# 4. AUDIO SYNTHESIS & TIMING
 # ==========================================
 audio_clips = []
 current_time = 0.0
@@ -103,13 +123,12 @@ for idx, item in enumerate(script_data):
     item["start"] = current_time
     item["end"] = current_time + duration
     
-    positioned_chunk = chunk.with_start(current_time)
-    audio_clips.append(positioned_chunk)
+    audio_clips.append(chunk.with_start(current_time))
     current_time += duration
 
-# Strategic monetization check: Append high-retention outro if clip falls below 60 seconds
+# Safe monetization check padding
 if current_time < 61.0:
-    print(f"[MONETIZATION] Duration ({current_time:.2f}s) is short of the threshold. Crafting retention outro segment...")
+    print(f"[MONETIZATION] Adjusting duration ({current_time:.2f}s) to exceed 60s standard threshold...")
     outro_text = "If these cosmic revelations shook your reality, click the follow button now and join us for more mind bending secrets."
     tts_outro = gTTS(text=outro_text, lang='en', tld='com')
     outro_path = "segment_outro.mp3"
@@ -131,16 +150,14 @@ if current_time < 61.0:
 
 final_audio_track = CompositeAudioClip(audio_clips)
 total_video_duration = current_time
-print(f"[AUDIO ENGINE] Balanced timeline finalized. Composite Video Length: {total_video_duration:.2f} seconds.")
 
 # ==========================================
-# 4. PROCEDURAL GRAPHICS AND RENDERING ENGINE
+# 5. LOW-MEMORY GRAPHICS RENDERING
 # ==========================================
 def make_frame(t):
-    # Standard TikTok 9:16 vertical resolution orientation
-    W, H = 1080, 1920
+    # Downscaled to 720x1280 to save massive memory allocation under 512MB RAM
+    W, H = 720, 1280
     
-    # Locate active text block for the timestamp
     active_segment = None
     for item in script_data:
         if item["start"] <= t <= item["end"]:
@@ -149,7 +166,7 @@ def make_frame(t):
     if not active_segment and script_data:
         active_segment = script_data[-1]
 
-    # Generate a shifting dark cosmic dust base matrix
+    # Generate backgrounds using standard memory constraints
     y_coords = np.linspace(0, 1, H).reshape(H, 1)
     x_coords = np.linspace(0, 1, W).reshape(1, W)
     
@@ -165,29 +182,28 @@ def make_frame(t):
     frame_image = Image.fromarray(canvas_matrix)
     draw_context = ImageDraw.Draw(frame_image)
     
-    # Render starry layer
+    # Render static starry fields
     np.random.seed(101)
-    for _ in range(75):
+    for _ in range(45):
         star_x = np.random.randint(0, W)
         star_y = np.random.randint(0, H)
-        diameter = np.random.randint(1, 4)
+        diameter = np.random.randint(1, 3)
         brightness = int(140 + 115 * np.sin(t * 2.5 + star_x))
         draw_context.ellipse([star_x, star_y, star_x + diameter, star_y + diameter], fill=(brightness, brightness, brightness))
         
-    # Render typography subtitles
+    # Process text wrap boundaries
     if active_segment:
         raw_words = active_segment["text"].split()
         text_font = None
         try:
             if FONT_PATH:
-                text_font = ImageFont.truetype(FONT_PATH, 52)
+                text_font = ImageFont.truetype(FONT_PATH, 38) # Adjusted for 720p scaling
         except:
             pass
         if not text_font:
             text_font = ImageFont.load_default()
             
-        # Word wrapping engine
-        max_line_width = 860
+        max_line_width = 600
         processed_lines = []
         working_line = []
         
@@ -197,7 +213,7 @@ def make_frame(t):
                 boundaries = text_font.getbbox(test_string)
                 rendered_width = boundaries[2] - boundaries[0]
             except:
-                rendered_width = len(test_string) * 28
+                rendered_width = len(test_string) * 16
                 
             if rendered_width <= max_line_width:
                 working_line.append(word)
@@ -210,8 +226,7 @@ def make_frame(t):
         if working_line:
             processed_lines.append(" ".join(working_line))
             
-        # Spatial text composition calculations
-        spacing_offset = 22
+        spacing_offset = 15
         accumulated_text_height = 0
         layout_manifest = []
         
@@ -220,84 +235,53 @@ def make_frame(t):
                 boundaries = text_font.getbbox(line)
                 line_h = boundaries[3] - boundaries[1]
             except:
-                line_h = 55
+                line_h = 35
             layout_manifest.append((line, line_h))
             accumulated_text_height += line_h + spacing_offset
             
         if accumulated_text_height > 0:
             accumulated_text_height -= spacing_offset
             
-        # Center-align vertical drawing sequence
         draw_y = (H / 2) - (accumulated_text_height / 2)
         for line, line_h in layout_manifest:
             try:
                 boundaries = text_font.getbbox(line)
                 line_w = boundaries[2] - boundaries[0]
             except:
-                line_w = len(line) * 28
+                line_w = len(line) * 16
             draw_x = (W / 2) - (line_w / 2)
             
-            # High-contrast background drop outline shadows
-            for offset_x in [-3, 0, 3]:
-                for offset_y in [-3, 0, 3]:
+            # Subtle text drop outlines
+            for offset_x in [-2, 2]:
+                for offset_y in [-2, 2]:
                     draw_context.text((draw_x + offset_x, draw_y + offset_y), line, font=text_font, fill=(0, 0, 0))
                     
-            # High-visibility viral yellow text fill
             draw_context.text((draw_x, draw_y), line, font=text_font, fill=(255, 235, 15))
             draw_y += line_h + spacing_offset
 
     return np.array(frame_image)
 
 # ==========================================
-# 5. VIDEO RENDER ASSEMBLER
+# 6. EXECUTOR ASSEMBLY
 # ==========================================
-print("[COMPOSITOR] Structuring virtual frame generators...")
+print("[COMPOSITOR] Stitching layers together...")
 raw_video_track = VideoClip(make_frame, duration=total_video_duration)
 final_video_output = raw_video_track.with_audio(final_audio_track)
 
 target_filename = "tiktok_viral_video.mp4"
-print(f"[COMPOSITOR] Rendering video layers into high definition output target: '{target_filename}'...")
-
 final_video_output.write_videofile(
     target_filename,
-    fps=24,
+    fps=20, # Reduced slightly from 24 to optimize rendering speed and RAM usage
     codec="libx264",
     audio_codec="aac"
 )
 
-print("[COMPOSITOR] Video file generated successfully.")
-
-# Resource housecleaning procedures to free filesystem handles
-print("[CLEANER] Running structural pipeline asset housecleaning...")
+print("[COMPOSITOR] Clean up temporary storage tracks...")
 final_audio_track.close()
 raw_video_track.close()
 for temp_file in temp_audio_files:
-    try:
-        os.remove(temp_file)
-    except:
-        pass
-print("[CLEANER] Housecleaning completed.")
+    try: os.remove(temp_file)
+    except: pass
 
-# ==========================================
-# 6. RENDER SERVICE HEALTH KEEPALIVE DAEMON
-# ==========================================
-def serve_keep_alive():
-    target_port = int(os.getenv("PORT", 10000))
-    class HealthCheckListener(SimpleHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(b"<html><body><h1>Processing Finished</h1><p>Video target compiled.</p></body></html>")
-            
-    http_service = HTTPServer(('', target_port), HealthCheckListener)
-    print(f"[RENDER KEEPALIVE] Health endpoint active on port {target_port}.")
-    http_service.serve_forever()
-
-# Launch background server loop
-keepalive_worker = threading.Thread(target=serve_keep_alive, daemon=True)
-keepalive_worker.start()
-
-# Keep main processing thread pinned alive to prevent platform container cycles
-print("[SYSTEM] Video processing loop complete. Keeping server process active for platform access.")
+print("[SYSTEM] Output completed. Keeping web instance alive for system validation.")
 threading.Event().wait()
