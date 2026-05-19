@@ -1,0 +1,38 @@
+name: Generate TikTok Video
+
+on:
+  workflow_dispatch: # This adds a manual "Play" button so you can trigger it from your phone
+
+jobs:
+  render-video:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set Up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Linux Video Software
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+
+    - name: Install Python Dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run Video Generator Script
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python main.py
+
+    - name: Save and Deliver Video Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: finished-tiktok-video
+        path: "*.mp4"
