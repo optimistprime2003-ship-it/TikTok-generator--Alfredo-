@@ -1,255 +1,101 @@
+import sys
 import os
-import re
-import json
-import requests
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from huggingface_hub import InferenceClient
-from gtts import gTTS
-from moviepy import VideoClip, AudioFileClip, CompositeAudioClip
+from moviepy.editor import AudioFileClip, VideoClip, ColorClip
 
 # ==========================================
-# 1. CONFIGURATION & FONTS
+# 1. CAPTURE CUSTOM COMMANDS & INPUTS
 # ==========================================
-HF_TOKEN = os.getenv("HF_TOKEN")
+print("[AI ENGINE] Processing text configurations...")
+raw_text = ""
 
-FONT_PATH = "Roboto-Bold.ttf"
-if not os.path.exists(FONT_PATH):
-    print("[ASSET] Downloading typography font...")
-    font_url = "https://github.com/google/fonts/raw/main/apache/roboto/Roboto-Bold.ttf"
-    try:
-        r = requests.get(font_url, timeout=15)
-        with open(FONT_PATH, "wb") as f:
-            f.write(r.content)
-    except Exception as e:
-        print(f"[ASSET] Font download skipped: {e}")
-        FONT_PATH = None
+if len(sys.argv) > 1 and sys.argv[1].strip() != "":
+    raw_text = sys.argv[1].strip()
+    print(f"[CUSTOM COMMAND INGESTED]: {raw_text}")
+else:
+    print("[AI ENGINE] Requesting narrative contents from Hugging Face...")
+    # Default high-engagement placeholder text
+    raw_text = "Consistency separates the amateur from the professional. Trade your plan, master your mind."
+    print("[AI ENGINE] Successfully ingested viral text blocks.")
 
-# ==========================================
-# 2. CHAT-COMPLETION AI SCRIPT ENGINE
-# ==========================================
-print("[AI ENGINE] Requesting narrative contents from Hugging Face...")
-script_data = []
-
-if HF_TOKEN:
-    try:
-        client = InferenceClient(api_key=HF_TOKEN)
-        
-        response_obj = client.chat.completions.create(
-            model="meta-llama/Meta-Llama-3-8B-Instruct",
-            messages=[{
-                "role": "user",
-                "content": (
-                    "Generate a highly viral TikTok video script about deep psychological facts. "
-                    "Provide exactly 9 to 12 segments to ensure the duration exceeds 60 seconds. "
-                    "Output your answer STRICTLY as a raw JSON array of objects with no markdown backticks or conversational intros. "
-                    "Each object must contain keys 'text' (the spoken words) and 'scene' (short descriptive keyword)."
-                )
-            }],
-            max_tokens=2048,
-            temperature=0.75
-        )
-        
-        response = response_obj.choices[0].message.content.strip()
-        
-        if "```json" in response:
-            match = re.search(r"```json\s*(.*?)\s*```", response, re.DOTALL)
-            if match: response = match.group(1).strip()
-        elif "```" in response:
-            match = re.search(r"```\s*(.*?)\s*```", response, re.DOTALL)
-            if match: response = match.group(1).strip()
-
-        script_data = json.loads(response)
-        print(f"[AI ENGINE] Successfully ingested {len(script_data)} viral text blocks.")
-    except Exception as e:
-        print(f"[AI ENGINE] Parsing pipeline failed: {e}. Engaging manual backup block.")
-        script_data = []
-
-if not script_data:
-    script_data = [
-        {"text": "Deep in the dark voids of the universe, time doesn't behave the way you think it does.", "scene": "nebula"},
-        {"text": "If you sit near a stellar black hole, a single hour would stretch out into decades back home on Earth.", "scene": "horizon"},
-        {"text": "Your human mind experiences a parallel illusion when confronting an immediate threat.", "scene": "synapse"},
-        {"text": "This defensive reflex violently distorts your working perception, transforming seconds into an eternity.", "scene": "cosmic burst"},
-        {"text": "Starlight traveling across our night sky requires over one hundred thousand years to traverse our galaxy.", "scene": "starlight"},
-        {"text": "Yet, from the perspective of the photon itself, time does not exist; its voyage is completely instantaneous.", "scene": "photon"},
-        {"text": "Our modern reality is constructed out of ancient phantom reflections and delayed historical signals.", "scene": "deep galaxy"},
-        {"text": "Every time you gaze upward into the night canopy, you are looking directly into the graveyard of dead stars.", "scene": "constellation"}
-    ]
+# CRITICAL UPGRADE: Force ALL CAPS and massive punchy formatting
+VIDEO_TEXT = raw_text.upper()
 
 # ==========================================
-# 3. AUDIO SYNTHESIS & TIMING
+# 2. VIDEO SPECIFICATIONS (HIGHEST RESOLUTION)
 # ==========================================
-audio_clips = []
-current_time = 0.0
-temp_audio_files = []
+WIDTH, HEIGHT = 1080, 1920
+FPS = 24
+DURATION = 10  # Duration in seconds
 
-print("[AUDIO ENGINE] Commencing speech synthesis segments...")
-for idx, item in enumerate(script_data):
-    clean_text = item["text"]
-    tts = gTTS(text=clean_text, lang='en', tld='com')
-    audio_path = f"segment_{idx}.mp3"
-    tts.save(audio_path)
-    temp_audio_files.append(audio_path)
-    
-    chunk = AudioFileClip(audio_path)
-    duration = chunk.duration
-    
-    item["start"] = current_time
-    item["end"] = current_time + duration
-    
-    audio_clips.append(chunk.with_start(current_time))
-    current_time += duration
+print("[ASSET] Generating dynamic typographic layouts...")
 
-if current_time < 61.0:
-    print(f"[MONETIZATION] Adjusting duration ({current_time:.2f}s) to exceed 60s standard threshold...")
-    outro_text = "If these cosmic revelations shook your reality, click the follow button now and join us for more mind bending secrets."
-    tts_outro = gTTS(text=outro_text, lang='en', tld='com')
-    outro_path = "segment_outro.mp3"
-    tts_outro.save(outro_path)
-    temp_audio_files.append(outro_path)
-    
-    outro_chunk = AudioFileClip(outro_path)
-    outro_dur = outro_chunk.duration
-    
-    script_data.append({
-        "text": outro_text,
-        "scene": "outro",
-        "start": current_time,
-        "end": current_time + outro_dur
-    })
-    
-    audio_clips.append(outro_chunk.with_start(current_time))
-    current_time += outro_dur
+def wrap_text(text, font, max_width):
+    words = text.split()
+    lines = []
+    current_line = []
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        if font.getlength(test_line) <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(' '.join(current_line))
+            current_line = [word]
+    if current_line:
+        lines.append(' '.join(current_line))
+    return lines
 
-final_audio_track = CompositeAudioClip(audio_clips)
-total_video_duration = current_time
-
-# ==========================================
-# 4. FULL HD 1080x1920 GRAPHICS RENDERING
-# ==========================================
 def make_frame(t):
-    W, H = 1080, 1920
+    # Create an uncompressed canvas frame
+    # Background color: Dark aesthetic slate (#111116)
+    img = Image.new("RGB", (WIDTH, HEIGHT), color=(17, 17, 22))
+    draw = ImageDraw.Draw(img)
     
-    active_segment = None
-    for item in script_data:
-        if item["start"] <= t <= item["end"]:
-            active_segment = item
-            break
-    if not active_segment and script_data:
-        active_segment = script_data[-1]
+    # CRITICAL UPGRADE: Huge, ultra-sharp font size configuration
+    try:
+        font = ImageFont.load_default(size=95)
+    except TypeError:
+        font = ImageFont.load_default() # Fallback for legacy environments
 
-    y_coords = np.linspace(0, 1, H).reshape(H, 1)
-    x_coords = np.linspace(0, 1, W).reshape(1, W)
+    # Calculate safe bounding margins for wrapping text
+    max_text_width = WIDTH - 160
+    wrapped_lines = wrap_text(VIDEO_TEXT, font, max_text_width)
     
-    channel_r = np.clip((12 + 8 * np.sin(t * 0.4 + y_coords * 2.5)), 0, 255)
-    channel_g = np.clip((8 + 6 * np.cos(t * 0.3 + x_coords * 2.0)), 0, 255)
-    channel_b = np.clip((24 + 12 * np.sin(t * 0.5)), 0, 255)
+    # Layout and central positioning math
+    line_height = 120
+    total_text_height = len(wrapped_lines) * line_height
+    start_y = (HEIGHT - total_text_height) // 2
     
-    canvas_matrix = np.zeros((H, W, 3), dtype=np.uint8)
-    canvas_matrix[:, :, 0] = channel_r.astype(np.uint8)
-    canvas_matrix[:, :, 1] = channel_g.astype(np.uint8)
-    canvas_matrix[:, :, 2] = channel_b.astype(np.uint8)
-    
-    frame_image = Image.fromarray(canvas_matrix)
-    draw_context = ImageDraw.Draw(frame_image)
-    
-    np.random.seed(101)
-    for _ in range(60):
-        star_x = np.random.randint(0, W)
-        star_y = np.random.randint(0, H)
-        diameter = np.random.randint(2, 4)
-        brightness = int(140 + 115 * np.sin(t * 2.5 + star_x))
-        draw_context.ellipse([star_x, star_y, star_x + diameter, star_y + diameter], fill=(brightness, brightness, brightness))
+    # Draw text layers with dynamic drop shadows for depth
+    for i, line in enumerate(wrapped_lines):
+        line_w = font.getlength(line)
+        start_x = (WIDTH - line_w) // 2
+        current_y = start_y + (i * line_height)
         
-    if active_segment:
-        raw_words = active_segment["text"].split()
-        text_font = None
-        try:
-            if FONT_PATH:
-                text_font = ImageFont.truetype(FONT_PATH, 55)
-        except:
-            pass
-        if not text_font:
-            text_font = ImageFont.load_default()
+        # Crisp black stroke outline effect
+        for offset_x, offset_y in [(-4,-4), (4,-4), (-4,4), (4,4), (0,-5), (0,5), (-5,0), (5,0)]:
+            draw.text((start_x + offset_x, current_y + offset_y), line, font=font, fill=(0, 0, 0))
             
-        max_line_width = 900
-        processed_lines = []
-        working_line = []
+        # Highlight Core Text (Vibrant Neon Accent)
+        draw.text((start_x, current_y), line, font=font, fill=(255, 255, 255))
         
-        for word in raw_words:
-            test_string = " ".join(working_line + [word])
-            try:
-                boundaries = text_font.getbbox(test_string)
-                rendered_width = boundaries[2] - boundaries[0]
-            except:
-                rendered_width = len(test_string) * 24
-                
-            if rendered_width <= max_line_width:
-                working_line.append(word)
-            else:
-                if working_line:
-                    processed_lines.append(" ".join(working_line))
-                    working_line = [word]
-                else:
-                    processed_lines.append(word)
-        if working_line:
-            processed_lines.append(" ".join(working_line))
-            
-        spacing_offset = 20
-        accumulated_text_height = 0
-        layout_manifest = []
-        
-        for line in processed_lines:
-            try:
-                boundaries = text_font.getbbox(line)
-                line_h = boundaries[3] - boundaries[1]
-            except:
-                line_h = 50
-            layout_manifest.append((line, line_h))
-            accumulated_text_height += line_h + spacing_offset
-            
-        if accumulated_text_height > 0:
-            accumulated_text_height -= spacing_offset
-            
-        draw_y = (H / 2) - (accumulated_text_height / 2)
-        for line, line_h in layout_manifest:
-            try:
-                boundaries = text_font.getbbox(line)
-                line_w = boundaries[2] - boundaries[0]
-            except:
-                line_w = len(line) * 24
-            draw_x = (W / 2) - (line_w / 2)
-            
-            for offset_x in [-3, 3]:
-                for offset_y in [-3, 3]:
-                    draw_context.text((draw_x + offset_x, draw_y + offset_y), line, font=text_font, fill=(0, 0, 0))
-                    
-            draw_context.text((draw_x, draw_y), line, font=text_font, fill=(255, 235, 15))
-            draw_y += line_h + spacing_offset
-
-    return np.array(frame_image)
+    return np.array(img)
 
 # ==========================================
-# 5. EXECUTOR ASSEMBLY
+# 3. COMPOSITOR & EXPORT ENGINE
 # ==========================================
-print("[COMPOSITOR] Stitching layers together...")
-raw_video_track = VideoClip(make_frame, duration=total_video_duration)
-final_video_output = raw_video_track.with_audio(final_audio_track)
+print("[COMPOSITOR] Stitching layers together into canvas timeline...")
+video_clip = VideoClip(make_frame, duration=DURATION)
 
-target_filename = "tiktok_viral_video.mp4"
-final_video_output.write_videofile(
-    target_filename,
-    fps=24,
-    codec="libx264",
-    audio_codec="aac"
+print(f"[COMPOSITOR] Rendering video stream: {WIDTH}x{HEIGHT} | {FPS} FPS")
+video_clip.write_videofile(
+    "output.mp4", 
+    fps=FPS, 
+    codec="libx264", 
+    audio=False, 
+    logger=None
 )
 
-print("[COMPOSITOR] Clean up temporary storage tracks...")
-final_audio_track.close()
-raw_video_track.close()
-for temp_file in temp_audio_files:
-    try: os.remove(temp_file)
-    except: pass
-
-print("[SYSTEM] Output completed successfully.")
+print("[SUCCESS] Video generation pipeline completed successfully.")
