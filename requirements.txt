@@ -1,2 +1,6 @@
-# TikTok Generator - Python Dependencies
-# Add your project dependencies here
+huggingface_hub
+gTTS
+moviepy
+pillow
+requests
+numpy
