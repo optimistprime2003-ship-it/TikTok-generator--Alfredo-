@@ -49,11 +49,9 @@ def generate_script_and_timing():
     # Clean up any potential markdown formatting the LLM accidentally returned
     clean_json_str = response.strip()
     if "```json" in clean_json_str:
-        clean_json_str = clean_json_str.split("
-```json")[1].split("```")[0].strip()
+        clean_json_str = clean_json_str.split("```json")[1].split("```")[0].strip()
     elif "```" in clean_json_str:
-        clean_json_str = clean_json_str.split("
-```")[1].split("```")[0].strip()
+        clean_json_str = clean_json_str.split("```")[1].split("```")[0].strip()
         
     try:
         data = json.loads(clean_json_str)
@@ -71,7 +69,7 @@ def generate_voiceover(full_text):
     print("Generating free voiceover audio via gTTS...")
     output_audio_path = "voiceover.mp3"
     
-    # 'en' for English, tld='co.uk' or 'com' can be used to tweak accent styles slightly
+    # 'en' for English, tld='com' handles the accent processing natively
     tts = gTTS(text=full_text, lang='en', tld='com', slow=False)
     tts.save(output_audio_path)
     return output_audio_path
@@ -147,7 +145,7 @@ def create_video_pipeline(script_segments, audio_path, font_path):
 
 if __name__ == "__main__":
     if not hf_token:
-        print("Warning: HF_TOKEN environment variable not found. Requesting unauthenticated public endpoint...")
+        print("Warning: HF_TOKEN environment variable not found.")
         
     font_file = download_font()
     segments = generate_script_and_timing()
