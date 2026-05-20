@@ -5,7 +5,7 @@ import random
 import requests
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoClip, VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
 
 # ==========================================
 # 1. PARSE TOPIC & GENERATE VOICE TEXT
