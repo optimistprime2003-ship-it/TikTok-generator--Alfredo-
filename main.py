@@ -8,20 +8,52 @@ import numpy as np
 from moviepy.editor import VideoFileClip, AudioFileClip
 
 # ==========================================
-# 1. PARSE TOPIC & GENERATE VOICE TEXT
+# 1. PARSE TOPIC & GENERATE DYNAMIC SCRIPT
 # ==========================================
 TOPIC = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1].strip() != "" else "How does the brain work"
-print(f"[BOT] Target Topic Received: '{TOPIC}'")
+print(f"[BOT] Target Prompt Received: '{TOPIC}'")
 
-if "brain" in TOPIC.lower():
-    SCRIPT_TEXT = "The human brain contains eighty-six billion neurons. They communicate through electrical impulses traveling up to two hundred and sixty miles per hour. Every single memory, thought, and feeling is just a complex symphony of these microscopic signals flashing across your mind."
-    SEARCH_KEYWORD = "brain neurology"
-elif "crypto" in TOPIC.lower() or "bitcoin" in TOPIC.lower() or "trade" in TOPIC.lower():
-    SCRIPT_TEXT = "Markets move on two emotions: fear and greed. True consistency separates the top one percent from the amateur. If you stick strictly to your execution rules and master your internal psychology, numbers don't lie."
-    SEARCH_KEYWORD = "finance trading"
-else:
-    SCRIPT_TEXT = f"Let's dive into {TOPIC}. Understanding complex subjects requires breaking them down to their core structural principles. Focus, track the underlying data points, and consistency will build the ultimate blueprint for success."
-    SEARCH_KEYWORD = "abstract technology"
+def get_ai_script_and_keywords(prompt_topic):
+    # Reliable safety fallback defaults if the open API is congested
+    fallback_script = f"Let's dive into {prompt_topic}. Understanding complex subjects requires breaking them down into their core foundational principles. By analyzing the underlying patterns and remaining consistent, anyone can master the internal mechanics of this topic."
+    fallback_keyword = "abstract technology"
+    
+    # Utilizing a high-performance open-source LLM via Hugging Face serverless infrastructure
+    url = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-7B-Instruct"
+    
+    system_prompt = (
+        "Respond EXACTLY in this format, replacing the bracketed text:\n"
+        "KEYWORDS: [1-2 simple, lowercase general search terms for a background video, e.g. 'space' or 'ocean']\n"
+        "SCRIPT: [A fascinating 3-sentence educational answer to the user's question, around 40-50 words max. No emojis, no markdown, no introductions.]\n\n"
+        f"User Question: {prompt_topic}"
+    )
+    
+    print("[AI ENGINE] Querying open-source model for custom script...")
+    try:
+        response = requests.post(url, json={"inputs": system_prompt, "parameters": {"max_new_tokens": 150}}, timeout=12)
+        if response.status_code == 200:
+            raw_result = response.json()
+            gen_text = raw_result[0].get("generated_text", "") if isinstance(raw_result, list) else raw_result.get("generated_text", "")
+            
+            if system_prompt in gen_text:
+                gen_text = gen_text.replace(system_prompt, "")
+                
+            if "KEYWORDS:" in gen_text and "SCRIPT:" in gen_text:
+                parts = gen_text.split("SCRIPT:")
+                kw = parts[0].replace("KEYWORDS:", "").replace("[", "").replace("]", "").strip()
+                sc = parts[1].replace("[", "").replace("]", "").strip()
+                if kw and sc:
+                    return sc, kw
+        print(f"[AI ENGINE INFO] Server status {response.status_code}. Using tailored template system.")
+    except Exception as e:
+        print(f"[AI ENGINE WARNING] Request pool busy ({e}). Deploying adaptive fallback.")
+        
+    return fallback_script, fallback_keyword
+
+# Run the live generation
+SCRIPT_TEXT, SEARCH_KEYWORD = get_ai_script_and_keywords(TOPIC)
+print(f"[BOT AI] Final Script Voiceover: \"{SCRIPT_TEXT}\"")
+print(f"[BOT AI] Pexels Visual Keyword: '{SEARCH_KEYWORD}'")
 
 # ==========================================
 # 2. GENERATE AI VOICE (EDGE-TTS)
@@ -36,56 +68,53 @@ print("[TTS ENGINE] Commencing speech synthesis...")
 asyncio.run(generate_voice())
 
 # ==========================================
-# 3. FETCH ORIGINAL BACKGROUND FROM PEXELS
+# 3. FETCH MATCHING BACKGROUND FROM PEXELS
 # ==========================================
 PEXELS_KEY = os.getenv("PEXELS_API_KEY")
 VIDEO_FILE = "background.mp4"
 
 if not PEXELS_KEY:
-    print("[ERROR] PEXELS_API_KEY is missing from GitHub Secrets! Cannot fetch video clips.")
+    print("[ERROR] PEXELS_API_KEY is missing from GitHub Secrets!")
     sys.exit(1)
 
 headers = {"Authorization": PEXELS_KEY}
 url = f"https://api.pexels.com/videos/search?query={SEARCH_KEYWORD}&per_page=5&orientation=portrait"
 
-print(f"[PEXELS API] Querying stock assets for '{SEARCH_KEYWORD}'...")
+print(f"[PEXELS API] Downloading stock assets matching '{SEARCH_KEYWORD}'...")
 try:
     response = requests.get(url, headers=headers, timeout=15).json()
     video_data = random.choice(response['videos'])
     video_files = video_data['video_files']
     download_url = next(f['link'] for f in video_files if f['width'] <= 1080)
     
-    print("[DOWNLOADER] Extracting raw binary video track...")
     video_bytes = requests.get(download_url, timeout=20).content
     with open(VIDEO_FILE, "wb") as f:
         f.write(video_bytes)
 except Exception as e:
-    print(f"[FATAL SETUP ERROR] Failed to fetch or download stock footage: {e}")
-    sys.exit(1)
+    print(f"[PEXELS FALLBACK] Media fetch failed for '{SEARCH_KEYWORD}'. Pulling generic city asset...")
+    alt_url = "https://api.pexels.com/videos/search?query=city&per_page=1&orientation=portrait"
+    response = requests.get(alt_url, headers=headers, timeout=15).json()
+    download_url = response['videos'][0]['video_files'][0]['link']
+    with open(VIDEO_FILE, "wb") as f:
+        f.write(requests.get(download_url).content)
 
 # ==========================================
-# 4. TYPOGRAPHY SETUP (MONTSERRAT BOLD)
+# 4. TYPOGRAPHY & ASSET LOADING
 # ==========================================
 FONT_FILE = "Montserrat-Bold.ttf"
 try:
-    # Look for common linux system font path first, fallback to direct download if missing
-    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    if not os.path.exists(font_path):
-        font_path = FONT_FILE
-        if not os.path.exists(font_path):
-            print("[FONT SEEDER] Downloading crisp typography assets...")
-            r = requests.get("https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/Montserrat-Bold.ttf", timeout=10)
-            with open(font_path, "wb") as f:
-                f.write(r.content)
-    video_font = ImageFont.truetype(font_path, 65)
+    if not os.path.exists(FONT_FILE):
+        print("[FONT SEEDER] Downloading high-grade bold typography assets...")
+        r = requests.get("https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/Montserrat-Bold.ttf", timeout=10)
+        with open(FONT_FILE, "wb") as f:
+            f.write(r.content)
+    video_font = ImageFont.truetype(FONT_FILE, 65)
     line_h = 90
-    print(f"[FONT] System typography loaded cleanly from: {font_path}")
 except Exception as e:
-    print(f"[FONT WARNING] Typography engine fallback deployed: {e}")
+    print(f"[FONT WARNING] Core layout fallback deployed: {e}")
     video_font = ImageFont.load_default()
     line_h = 25
 
-# Helper logic to wrap lines safely across a mobile screen canvas
 def wrap_text(text, font, max_width):
     words = text.upper().split()
     lines = []
@@ -101,9 +130,9 @@ def wrap_text(text, font, max_width):
     return lines
 
 # ==========================================
-# 5. STREAMLINED FRAME-STAMPING ENGINE
+# 5. INLINE FRAME STAMPING COMPOSITOR
 # ==========================================
-print("[COMPOSITOR] Extracting video track arrays...")
+print("[COMPOSITOR] Staging master tracking elements...")
 audio_track = AudioFileClip(VOICE_FILE)
 duration = audio_track.duration
 
@@ -115,7 +144,6 @@ else:
 
 bg_clip = bg_clip.resize(newsize=(1080, 1920))
 
-# This stamps captions directly into the frame pixels, bypassing alpha conflicts entirely!
 def add_captions_to_frame(frame):
     img = Image.fromarray(frame)
     draw = ImageDraw.Draw(img)
@@ -129,19 +157,19 @@ def add_captions_to_frame(frame):
         start_x = (1080 - line_w) // 2
         curr_y = start_y + (idx * line_h)
         
-        # Heavy black high-contrast outline backings
+        # Symmetrical high-contrast black shadow backing block
         for dx, dy in [(-3,-3), (3,-3), (-3,3), (3,3), (-1,-1), (1,-1), (-1,1), (1,1)]:
             draw.text((start_x + dx, curr_y + dy), line, font=video_font, fill=(0, 0, 0))
             
-        # Crisp white face text fronting
+        # Hard white center layer typography
         draw.text((start_x, curr_y), line, font=video_font, fill=(255, 255, 255))
         
     return np.array(img)
 
-print("[COMPOSITOR] Commencing inline pixel typography transformations...")
+print("[COMPOSITOR] Transforming raw pixels via frame-stamping matrix...")
 final_video = bg_clip.fl_image(add_captions_to_frame).set_audio(audio_track)
 
-print("[COMPOSITOR] Rendering finalized MP4 production master...")
+print("[COMPOSITOR] Compiling broadcast production master output...")
 final_video.write_videofile(
     "output.mp4",
     fps=24,
@@ -151,4 +179,4 @@ final_video.write_videofile(
     logger=None
 )
 
-print("[SUCCESS] Production sequence ended cleanly.")
+print("[SUCCESS] Pipeline process ended smoothly.")
