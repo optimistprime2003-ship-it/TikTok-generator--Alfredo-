@@ -5,7 +5,7 @@ import random
 import requests
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
-from moviepy.editor import VideoClip, VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 # ==========================================
 # 1. PARSE TOPIC & GENERATE VOICE TEXT
@@ -13,7 +13,6 @@ from moviepy.editor import VideoClip, VideoFileClip, AudioFileClip, TextClip, Co
 TOPIC = sys.argv[1].strip() if len(sys.argv) > 1 and sys.argv[1].strip() != "" else "How does the brain work"
 print(f"[BOT] Target Topic Received: '{TOPIC}'")
 
-# Simplified dynamic educational scripts based on keyword matching
 if "brain" in TOPIC.lower():
     SCRIPT_TEXT = "The human brain contains eighty-six billion neurons. They communicate through electrical impulses traveling up to two hundred and sixty miles per hour. Every single memory, thought, and feeling is just a complex symphony of these microscopic signals flashing across your mind."
     SEARCH_KEYWORD = "brain neurology"
@@ -30,7 +29,6 @@ else:
 VOICE_FILE = "voice.mp3"
 async def generate_voice():
     import edge_tts
-    # Using a crisp, premium male professional voice
     communicate = edge_tts.Communicate(SCRIPT_TEXT, "en-US-ChristopherNeural")
     await communicate.save(VOICE_FILE)
 
@@ -53,9 +51,7 @@ url = f"https://api.pexels.com/videos/search?query={SEARCH_KEYWORD}&per_page=5&o
 print(f"[PEXELS API] Querying stock assets for '{SEARCH_KEYWORD}'...")
 try:
     response = requests.get(url, headers=headers, timeout=15).json()
-    # Pull a random clip from the top portrait results to keep every single run unique
     video_data = random.choice(response['videos'])
-    # Find a clean HD or mobile-friendly file link
     video_files = video_data['video_files']
     download_url = next(f['link'] for f in video_files if f['width'] <= 1080)
     
@@ -68,23 +64,28 @@ except Exception as e:
     sys.exit(1)
 
 # ==========================================
-# 4. ADVANCED VIDEO PROCESSING ENGINE
+# 4. TYPOGRAPHY SETUP (MONTSERRAT BOLD)
 # ==========================================
-print("[COMPOSITOR] Staging audio and visual elements...")
-audio_track = AudioFileClip(VOICE_FILE)
-duration = audio_track.duration
+FONT_FILE = "Montserrat-Bold.ttf"
+try:
+    # Look for common linux system font path first, fallback to direct download if missing
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if not os.path.exists(font_path):
+        font_path = FONT_FILE
+        if not os.path.exists(font_path):
+            print("[FONT SEEDER] Downloading crisp typography assets...")
+            r = requests.get("https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/Montserrat-Bold.ttf", timeout=10)
+            with open(font_path, "wb") as f:
+                f.write(r.content)
+    video_font = ImageFont.truetype(font_path, 65)
+    line_h = 90
+    print(f"[FONT] System typography loaded cleanly from: {font_path}")
+except Exception as e:
+    print(f"[FONT WARNING] Typography engine fallback deployed: {e}")
+    video_font = ImageFont.load_default()
+    line_h = 25
 
-# Load background, strip original audio, loop or trim to match voice file exactly
-bg_clip = VideoFileClip(VIDEO_FILE).without_audio()
-if bg_clip.duration < duration:
-    bg_clip = bg_clip.loop(duration=duration)
-else:
-    bg_clip = bg_clip.subclip(0, duration)
-
-# Force background to conform perfectly to 1080x1920 TikTok standards
-bg_clip = bg_clip.resize(newsize=(1080, 1920))
-
-# Text layout helper using standard system font mechanics to prevent format crashes
+# Helper logic to wrap lines safely across a mobile screen canvas
 def wrap_text(text, font, max_width):
     words = text.upper().split()
     lines = []
@@ -99,33 +100,46 @@ def wrap_text(text, font, max_width):
     if current_line: lines.append(' '.join(current_line))
     return lines
 
-print("[COMPOSITOR] Generating high-contrast dynamic text layer...")
-def make_caption_frame(t):
-    img = Image.new("RGBA", (1080, 1920), (0, 0, 0, 0))
+# ==========================================
+# 5. STREAMLINED FRAME-STAMPING ENGINE
+# ==========================================
+print("[COMPOSITOR] Extracting video track arrays...")
+audio_track = AudioFileClip(VOICE_FILE)
+duration = audio_track.duration
+
+bg_clip = VideoFileClip(VIDEO_FILE).without_audio()
+if bg_clip.duration < duration:
+    bg_clip = bg_clip.loop(duration=duration)
+else:
+    bg_clip = bg_clip.subclip(0, duration)
+
+bg_clip = bg_clip.resize(newsize=(1080, 1920))
+
+# This stamps captions directly into the frame pixels, bypassing alpha conflicts entirely!
+def add_captions_to_frame(frame):
+    img = Image.fromarray(frame)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default() # Fallback safe system font engine
     
-    # Text mapping metrics
-    lines = wrap_text(SCRIPT_TEXT, font, 900)
-    line_h = 80
-    start_y = (1920 - (len(lines) * line_h)) // 2
+    lines = wrap_text(SCRIPT_TEXT, video_font, 900)
+    total_text_h = len(lines) * line_h
+    start_y = (1920 - total_text_h) // 2
     
     for idx, line in enumerate(lines):
-        line_w = font.getlength(line)
+        line_w = video_font.getlength(line)
         start_x = (1080 - line_w) // 2
         curr_y = start_y + (idx * line_h)
         
-        # Heavy shadow backing lines for high mobile readability
-        for dx, dy in [(-2,-2), (2,-2), (-2,2), (2,2)]:
-            draw.text((start_x + dx, curr_y + dy), line, font=font, fill=(0, 0, 0, 255))
-        # Hard white primary face text
-        draw.text((start_x, curr_y), line, font=font, fill=(255, 255, 255, 255))
+        # Heavy black high-contrast outline backings
+        for dx, dy in [(-3,-3), (3,-3), (-3,3), (3,3), (-1,-1), (1,-1), (-1,1), (1,1)]:
+            draw.text((start_x + dx, curr_y + dy), line, font=video_font, fill=(0, 0, 0))
+            
+        # Crisp white face text fronting
+        draw.text((start_x, curr_y), line, font=video_font, fill=(255, 255, 255))
         
     return np.array(img)
 
-# Combine video background, synthesized voice track, and text subtitles
-caption_clip = VideoClip(make_caption_frame, duration=duration).set_ismask(False)
-final_video = CompositeVideoClip([bg_clip, caption_clip]).set_audio(audio_track)
+print("[COMPOSITOR] Commencing inline pixel typography transformations...")
+final_video = bg_clip.fl_image(add_captions_to_frame).set_audio(audio_track)
 
 print("[COMPOSITOR] Rendering finalized MP4 production master...")
 final_video.write_videofile(
